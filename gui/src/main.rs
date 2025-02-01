@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_variables)]
-#![cfg_attr(not(debug_assertions), windows_subsystem= "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use eframe::{
     egui::{self, Color32, Frame, Rect, Stroke},
@@ -135,7 +135,8 @@ impl eframe::App for App {
                 ui.ctx().request_repaint();
                 let (time, dt) = ui.input(|i| (i.time, i.stable_dt));
                 self.simulation.tick(dt as Float);
-                let desired_size = ui.available_width() * egui::vec2(1.0, 1.0);
+                let desired_size =
+                    ui.available_width().min(ui.available_height()) * egui::vec2(1.0, 1.0);
                 let (_id, rect) = ui.allocate_space(desired_size);
 
                 let visible_width = 20.0;
