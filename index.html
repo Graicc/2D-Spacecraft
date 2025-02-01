@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+
+<head>
+	<title>2D Spacecraft</title>
+
+	
+<script type="module">
+import init, * as bindings from 'https://graicc.github.io/2D-Spacecraft/gui.js';
+const wasm = await init({ module_or_path: 'https://graicc.github.io/2D-Spacecraft/gui_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+	<base href="https://graicc.github.io/2D-Spacecraft/" />
+	<style>
+		html {
+			touch-action: manipulation;
+		}
+
+		body {
+			background: #404040;
+		}
+
+		html,
+		body {
+			overflow: hidden;
+			margin: 0 !important;
+			padding: 0 !important;
+			width: 100%;
+			height: 100%;
+		}
+
+		canvas {
+			margin-right: auto;
+			margin-left: auto;
+			display: block;
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+		}
+
+		.centered {
+			margin-right: auto;
+			margin-left: auto;
+			display: block;
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: #f0f0f0;
+			font-size: 24px;
+			font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+			text-align: center;
+		}
+
+		.lds-dual-ring {
+			display: inline-block;
+			width: 24px;
+			height: 24px;
+		}
+
+		.lds-dual-ring:after {
+			content: " ";
+			display: block;
+			width: 24px;
+			height: 24px;
+			margin: 0px;
+			border-radius: 50%;
+			border: 3px solid #fff;
+			border-color: #fff transparent #fff transparent;
+			animation: lds-dual-ring 1.2s linear infinite;
+		}
+
+		@keyframes lds-dual-ring {
+			0% {
+				transform: rotate(0deg);
+			}
+
+			100% {
+				transform: rotate(360deg);
+			}
+		}
+	</style>
+<link rel="modulepreload" href="https://graicc.github.io/2D-Spacecraft/gui.js" crossorigin="anonymous" integrity="sha384-r6i7oc/Q/kPvx3D4ire5guvC2gD6fw0j3/6IQK0ipuRmcu85pSaJWYkTuCrLKuBg"><link rel="preload" href="https://graicc.github.io/2D-Spacecraft/gui_bg.wasm" crossorigin="anonymous" integrity="sha384-NYEYN3a5b3x1b7JYVdQwPrtFggPNzT8IS6Rd90yEDkhI2rM4TPLVejDR5AsOmuGe" as="fetch" type="application/wasm"></head>
+
+<body>
+	<canvas id="the_canvas_id"> </canvas>
+	<div class="centered" id="loading_text">
+		<p style="font-size:16px">
+			Loading…
+		</p>
+		<div class="lds-dual-ring"></div>
+	</div>
+</body>
+
+</html>
