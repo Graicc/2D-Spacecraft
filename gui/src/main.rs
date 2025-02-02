@@ -3,9 +3,9 @@
 
 use eframe::{
     egui::{self, Color32, Frame, Rect, Stroke},
-    emath,
+    emath::{self, RectTransform},
 };
-use nalgebra::Vector2;
+use nalgebra::{Rotation2, Vector2};
 
 type Float = f64;
 type Vec2 = Vector2<Float>;
@@ -78,7 +78,8 @@ impl App {
             state: State {
                 position: Vec2::zeros(),
                 theta: 0.0,
-                velocity: Vec2::new(1.0, 1.0),
+                // velocity: Vec2::new(1.0, 1.0),
+                velocity: Vec2::new(0.0, 0.0),
                 theta_dot: 0.0,
             },
             ..Default::default()
@@ -99,79 +100,97 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("2D Spacecraft");
 
-            // Impulse buttons
-            {
-                let kick = 0.1;
-                ui.horizontal(|ui| {
-                    if ui.small_button("↺").clicked() {
-                        self.simulation.state.theta_dot -= kick;
-                    }
-                    if ui.small_button("U").clicked() {
-                        self.simulation.state.velocity.y += kick;
-                    }
-                    if ui.small_button("↻").clicked() {
-                        self.simulation.state.theta_dot += kick;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if ui.small_button("L").clicked() {
-                        self.simulation.state.velocity.x -= kick;
-                    }
+            egui::SidePanel::left("controls")
+                .resizable(true)
+                .min_width(230.0)
+                .show_inside(ui, |ui| {
+                    egui::Grid::new("Impulse")
+                        .min_col_width(0.0)
+                        .show(ui, |ui| {
+                            let kick = 0.1;
+                            if ui.small_button("↺").clicked() {
+                                self.simulation.state.theta_dot += kick;
+                            }
+                            if ui.small_button("U").clicked() {
+                                self.simulation.state.velocity.y += kick;
+                            }
+                            if ui.small_button("↻").clicked() {
+                                self.simulation.state.theta_dot -= kick;
+                            }
+                            ui.end_row();
+
+                            if ui.small_button("L").clicked() {
+                                self.simulation.state.velocity.x -= kick;
+                            }
+                            ui.label("");
+                            if ui.small_button("R").clicked() {
+                                self.simulation.state.velocity.x += kick;
+                            }
+                            ui.end_row();
+
+                            ui.label("");
+                            if ui.small_button("D").clicked() {
+                                self.simulation.state.velocity.y -= kick;
+                            }
+                        });
+
                     ui.add_space(30.0);
-                    if ui.small_button("R").clicked() {
-                        self.simulation.state.velocity.x += kick;
-                    }
+                    ui.label("RCS Values");
+
+                    ui.horizontal(|ui| {
+                        ui.label("X");
+                        ui.add(egui::Slider::new(
+                            &mut self.simulation.desired_rcs.x,
+                            -1.0..=1.0,
+                        ));
+                        if ui.small_button("↺").clicked() {
+                            self.simulation.desired_rcs.x = 0.0;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Y");
+                        ui.add(egui::Slider::new(
+                            &mut self.simulation.desired_rcs.y,
+                            -1.0..=1.0,
+                        ));
+                        if ui.small_button("↺").clicked() {
+                            self.simulation.desired_rcs.y = 0.0;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("θ");
+                        ui.add(egui::Slider::new(
+                            &mut self.simulation.desired_rcs.z,
+                            -1.0..=1.0,
+                        ));
+                        if ui.small_button("↺").clicked() {
+                            self.simulation.desired_rcs.z = 0.0;
+                        }
+                    });
                 });
-                ui.horizontal(|ui| {
-                    ui.add_space(25.0);
-                    if ui.small_button("D").clicked() {
-                        self.simulation.state.velocity.y -= kick;
-                    }
+
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                // Draw the spacecraft
+                Frame::canvas(ui.style()).show(ui, |ui| {
+                    ui.ctx().request_repaint();
+                    let (time, dt) = ui.input(|i| (i.time, i.stable_dt));
+                    self.simulation.tick(dt as Float);
+                    let desired_size =
+                        ui.available_width().min(ui.available_height()) * egui::vec2(1.0, 1.0);
+                    let (_id, rect) = ui.allocate_space(desired_size);
+
+                    let visible_width = 20.0;
+                    let to_screen = emath::RectTransform::from_to(
+                        Rect::from_center_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(visible_width, visible_width),
+                        )
+                        .scale_from_center2(egui::vec2(1.0, -1.0)),
+                        rect,
+                    );
+
+                    self.simulation.draw(ui, to_screen);
                 });
-            }
-
-            // Draw the spacecraft
-            Frame::canvas(ui.style()).show(ui, |ui| {
-                ui.ctx().request_repaint();
-                let (time, dt) = ui.input(|i| (i.time, i.stable_dt));
-                self.simulation.tick(dt as Float);
-                let desired_size =
-                    ui.available_width().min(ui.available_height()) * egui::vec2(1.0, 1.0);
-                let (_id, rect) = ui.allocate_space(desired_size);
-
-                let visible_width = 20.0;
-                let to_screen = emath::RectTransform::from_to(
-                    Rect::from_center_size(
-                        egui::Pos2::ZERO,
-                        egui::vec2(visible_width, visible_width),
-                    )
-                    .scale_from_center2(egui::vec2(1.0, -1.0)),
-                    rect,
-                );
-
-                let radius: f32 = 0.5;
-                let position = to_ui_pos(self.simulation.state.position);
-                let velocity = to_ui_vec(self.simulation.state.velocity);
-                let front = {
-                    let state = &self.simulation.state;
-                    to_ui_pos(state.position + state.fowards() * radius as Float)
-                };
-
-                ui.painter().circle(
-                    to_screen * position,
-                    to_screen.scale().x * radius,
-                    Color32::TRANSPARENT,
-                    Stroke::new(3.0, Color32::WHITE),
-                );
-                ui.painter().line_segment(
-                    [to_screen * position, to_screen * front],
-                    Stroke::new(3.0, Color32::WHITE),
-                );
-                ui.painter().arrow(
-                    to_screen * position,
-                    velocity * to_screen.scale().x,
-                    Stroke::new(1.0, Color32::RED),
-                );
             });
         });
     }
@@ -186,8 +205,22 @@ struct State {
 }
 
 impl State {
-    fn fowards(&self) -> Vec2 {
-        Vec2::new(self.theta.sin(), self.theta.cos())
+    fn forwards(&self) -> Vec2 {
+        Vec2::new(self.theta.cos(), self.theta.sin())
+    }
+
+    fn up(&self) -> Vec2 {
+        Vec2::new(-self.theta.sin(), self.theta.cos())
+    }
+
+    fn local_to_world(&self, location: Vec2) -> Vec2 {
+        let rot = Rotation2::new(self.theta);
+        (rot * location) + self.position
+    }
+
+    fn rotate_vec(&self, vec: Vec2) -> Vec2 {
+        let rot = Rotation2::new(self.theta);
+        rot * vec
     }
 }
 
@@ -238,14 +271,98 @@ impl Default for Properties {
     }
 }
 
+fn compute_rcs(force_xyt: nalgebra::Vector3<Float>, theta: Float) -> nalgebra::Vector6<Float> {
+    let force_local_xyt = nalgebra::Matrix3::new_rotation(-theta) * force_xyt;
+
+    // RCS thrusters
+    //  0  1
+    // 5    2
+    //  4  3
+
+    #[rustfmt::skip]
+    let local_xyt_to_rcs = nalgebra::Matrix6x3::new(
+        0.0, -0.5, 1.0,
+        0.0, -0.5, -1.0,
+        -1.0, 0.0, 0.0,
+        0.0, 0.5, 1.0,
+        0.0, 0.5, -1.0,
+        1.0, 0.0, 0.0,
+    );
+
+    let rcs = local_xyt_to_rcs * force_local_xyt;
+    (rcs + rcs.abs()) / 2.0
+}
+
 #[derive(Debug, Default)]
 struct Simulation {
     state: State,
     properties: Properties,
+    desired_rcs: nalgebra::Vector3<Float>,
 }
 
 impl Simulation {
     fn tick(&mut self, dt: f64) {
         self.state.tick(dt, &self.properties);
+    }
+
+    fn draw(&self, ui: &mut egui::Ui, to_screen: RectTransform) {
+        let radius: f32 = 0.5;
+        let position = to_ui_pos(self.state.position);
+        let velocity = to_ui_vec(self.state.velocity);
+        let front = to_ui_pos(self.state.position + self.state.up() * radius as Float);
+
+        ui.painter().circle(
+            to_screen * position,
+            to_screen.scale().x * radius,
+            Color32::TRANSPARENT,
+            Stroke::new(3.0, Color32::WHITE),
+        );
+        ui.painter().line_segment(
+            [to_screen * position, to_screen * front],
+            Stroke::new(3.0, Color32::WHITE),
+        );
+        ui.painter().arrow(
+            to_screen * position,
+            velocity * to_screen.scale().x,
+            Stroke::new(2.0, Color32::GREEN),
+        );
+
+        let rcs = compute_rcs(self.desired_rcs, self.state.theta);
+
+        struct OffsetDir {
+            x: Float,
+            y: Float,
+            dir_x: Float,
+            dir_y: Float,
+        }
+
+        impl OffsetDir {
+            fn new(x: Float, y: Float, dir_x: Float, dir_y: Float) -> Self {
+                Self { x, y, dir_x, dir_y }
+            }
+        }
+
+        let offset_dirs = vec![
+            OffsetDir::new(-1.0, 0.1, 0.0, 1.0),
+            OffsetDir::new(1.0, 0.1, 0.0, 1.0),
+            OffsetDir::new(1.0, 0.0, 1.0, 0.0),
+            OffsetDir::new(1.0, -0.1, 0.0, -1.0),
+            OffsetDir::new(-1.0, -0.1, 0.0, -1.0),
+            OffsetDir::new(-1.0, 0.0, -1.0, 0.0),
+        ];
+
+        for (i, &v) in rcs.iter().enumerate() {
+            let offset = &offset_dirs[i];
+            let local_dir = Vec2::new(v * offset.dir_x, v * offset.dir_y);
+            let world_start = self.state.local_to_world(Vec2::new(offset.x, offset.y));
+
+            let world_dir = self.state.rotate_vec(local_dir);
+
+            ui.painter().arrow(
+                to_screen * to_ui_pos(world_start),
+                to_screen.scale().x * to_ui_vec(world_dir),
+                Stroke::new(2.0, Color32::RED),
+            );
+        }
     }
 }
