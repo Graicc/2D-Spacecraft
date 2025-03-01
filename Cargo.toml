@@ -1,6 +1,4 @@
 [workspace]
 
-members = [
-	"gui",
-]
+members = ["flight-controller", "gui"]
 resolver = "2"
