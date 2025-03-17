@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_variables)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use dynamics::{Simulation, State};
 use eframe::{
     egui::{self, Color32, Frame, Rect, Stroke},
     emath::{self, RectTransform},
@@ -9,6 +10,8 @@ use nalgebra::{Rotation2, Vector2};
 
 type Float = f64;
 type Vec2 = Vector2<Float>;
+
+mod dynamics;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
@@ -122,7 +125,10 @@ impl eframe::App for App {
                             if ui.small_button("L").clicked() {
                                 self.simulation.state.velocity.x -= kick;
                             }
-                            ui.label("");
+                            if ui.small_button("·").on_hover_text("Reset").clicked() {
+                                self.simulation.state.position = Vec2::zeros();
+                                self.simulation.state.velocity = Vec2::zeros();
+                            }
                             if ui.small_button("R").clicked() {
                                 self.simulation.state.velocity.x += kick;
                             }
@@ -140,31 +146,31 @@ impl eframe::App for App {
                     ui.horizontal(|ui| {
                         ui.label("X");
                         ui.add(egui::Slider::new(
-                            &mut self.simulation.desired_rcs.x,
+                            &mut self.simulation.controller.target.force.x,
                             -1.0..=1.0,
                         ));
                         if ui.small_button("↺").clicked() {
-                            self.simulation.desired_rcs.x = 0.0;
+                            self.simulation.controller.target.force.x = 0.0;
                         }
                     });
                     ui.horizontal(|ui| {
                         ui.label("Y");
                         ui.add(egui::Slider::new(
-                            &mut self.simulation.desired_rcs.y,
+                            &mut self.simulation.controller.target.force.y,
                             -1.0..=1.0,
                         ));
                         if ui.small_button("↺").clicked() {
-                            self.simulation.desired_rcs.y = 0.0;
+                            self.simulation.controller.target.force.y = 0.0;
                         }
                     });
                     ui.horizontal(|ui| {
                         ui.label("θ");
                         ui.add(egui::Slider::new(
-                            &mut self.simulation.desired_rcs.z,
+                            &mut self.simulation.controller.target.force.z,
                             -1.0..=1.0,
                         ));
                         if ui.small_button("↺").clicked() {
-                            self.simulation.desired_rcs.z = 0.0;
+                            self.simulation.controller.target.force.z = 0.0;
                         }
                     });
                 });
@@ -193,176 +199,5 @@ impl eframe::App for App {
                 });
             });
         });
-    }
-}
-
-#[derive(Debug, Default)]
-struct State {
-    position: Vec2,   // m
-    theta: Float,     // radians
-    velocity: Vec2,   // m/s
-    theta_dot: Float, // raidans/s
-}
-
-impl State {
-    fn forwards(&self) -> Vec2 {
-        Vec2::new(self.theta.cos(), self.theta.sin())
-    }
-
-    fn up(&self) -> Vec2 {
-        Vec2::new(-self.theta.sin(), self.theta.cos())
-    }
-
-    fn local_to_world(&self, location: Vec2) -> Vec2 {
-        let rot = Rotation2::new(self.theta);
-        (rot * location) + self.position
-    }
-
-    fn rotate_vec(&self, vec: Vec2) -> Vec2 {
-        let rot = Rotation2::new(self.theta);
-        rot * vec
-    }
-}
-
-fn apply_friction(velocity: &Vec2, friction: Float, dt: Float) -> Vec2 {
-    let v_norm = velocity.try_normalize(0.0);
-    let v_norm = match v_norm {
-        Some(v) => v,
-        None => return *velocity,
-    };
-    let v_friction = v_norm * friction;
-
-    let result = velocity - dt * v_friction;
-    if velocity.dot(&result) < 0.0 {
-        Vec2::zeros()
-    } else {
-        result
-    }
-}
-
-impl State {
-    fn tick(&mut self, dt: Float, properties: &Properties) {
-        self.position += self.velocity * dt;
-        self.theta += self.theta_dot * dt;
-
-        self.velocity = apply_friction(&self.velocity, properties.friction, dt);
-        self.theta_dot *= 1.0 - properties.rotational_damping;
-    }
-}
-
-#[derive(Debug)]
-struct Properties {
-    mass: Float,               // kg
-    moment_of_inertia: Float,  // kg m^2
-    friction: Float,           // mu
-    rotational_damping: Float, // idk
-    gravity: Float,            // m/s^2
-}
-
-impl Default for Properties {
-    fn default() -> Self {
-        Properties {
-            mass: 1.0,
-            moment_of_inertia: 1.0,
-            friction: 0.01,
-            rotational_damping: 0.01,
-            gravity: 9.8,
-        }
-    }
-}
-
-fn compute_rcs(force_xyt: nalgebra::Vector3<Float>, theta: Float) -> nalgebra::Vector6<Float> {
-    let force_local_xyt = nalgebra::Matrix3::new_rotation(-theta) * force_xyt;
-
-    // RCS thrusters
-    //  0  1
-    // 5    2
-    //  4  3
-
-    #[rustfmt::skip]
-    let local_xyt_to_rcs = nalgebra::Matrix6x3::new(
-        0.0, -0.5, 1.0,
-        0.0, -0.5, -1.0,
-        -1.0, 0.0, 0.0,
-        0.0, 0.5, 1.0,
-        0.0, 0.5, -1.0,
-        1.0, 0.0, 0.0,
-    );
-
-    let rcs = local_xyt_to_rcs * force_local_xyt;
-    (rcs + rcs.abs()) / 2.0
-}
-
-#[derive(Debug, Default)]
-struct Simulation {
-    state: State,
-    properties: Properties,
-    desired_rcs: nalgebra::Vector3<Float>,
-}
-
-impl Simulation {
-    fn tick(&mut self, dt: f64) {
-        self.state.tick(dt, &self.properties);
-    }
-
-    fn draw(&self, ui: &mut egui::Ui, to_screen: RectTransform) {
-        let radius: f32 = 0.5;
-        let position = to_ui_pos(self.state.position);
-        let velocity = to_ui_vec(self.state.velocity);
-        let front = to_ui_pos(self.state.position + self.state.up() * radius as Float);
-
-        ui.painter().circle(
-            to_screen * position,
-            to_screen.scale().x * radius,
-            Color32::TRANSPARENT,
-            Stroke::new(3.0, Color32::WHITE),
-        );
-        ui.painter().line_segment(
-            [to_screen * position, to_screen * front],
-            Stroke::new(3.0, Color32::WHITE),
-        );
-        ui.painter().arrow(
-            to_screen * position,
-            velocity * to_screen.scale().x,
-            Stroke::new(2.0, Color32::GREEN),
-        );
-
-        let rcs = compute_rcs(self.desired_rcs, self.state.theta);
-
-        struct OffsetDir {
-            x: Float,
-            y: Float,
-            dir_x: Float,
-            dir_y: Float,
-        }
-
-        impl OffsetDir {
-            fn new(x: Float, y: Float, dir_x: Float, dir_y: Float) -> Self {
-                Self { x, y, dir_x, dir_y }
-            }
-        }
-
-        let offset_dirs = vec![
-            OffsetDir::new(-1.0, 0.1, 0.0, 1.0),
-            OffsetDir::new(1.0, 0.1, 0.0, 1.0),
-            OffsetDir::new(1.0, 0.0, 1.0, 0.0),
-            OffsetDir::new(1.0, -0.1, 0.0, -1.0),
-            OffsetDir::new(-1.0, -0.1, 0.0, -1.0),
-            OffsetDir::new(-1.0, 0.0, -1.0, 0.0),
-        ];
-
-        for (i, &v) in rcs.iter().enumerate() {
-            let offset = &offset_dirs[i];
-            let local_dir = Vec2::new(v * offset.dir_x, v * offset.dir_y);
-            let world_start = self.state.local_to_world(Vec2::new(offset.x, offset.y));
-
-            let world_dir = self.state.rotate_vec(local_dir);
-
-            ui.painter().arrow(
-                to_screen * to_ui_pos(world_start),
-                to_screen.scale().x * to_ui_vec(world_dir),
-                Stroke::new(2.0, Color32::RED),
-            );
-        }
     }
 }
