@@ -2343,28 +2343,6 @@
 	)
 	(global_label "Fan5"
 		(shape input)
-		(at 160.02 44.45 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "000b9d52-ada6-4d69-bf30-ba7162275c84")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 152.4387 44.45 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-				(hide yes)
-			)
-		)
-	)
-	(global_label "Fan2"
-		(shape input)
 		(at 160.02 52.07 180)
 		(fields_autoplaced yes)
 		(effects
@@ -2373,7 +2351,7 @@
 			)
 			(justify right)
 		)
-		(uuid "0d847d5e-6206-4dd9-85c5-c48a912ce242")
+		(uuid "000b9d52-ada6-4d69-bf30-ba7162275c84")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 152.4387 52.07 0)
 			(effects
@@ -2385,9 +2363,9 @@
 			)
 		)
 	)
-	(global_label "Fan3"
+	(global_label "Fan2"
 		(shape input)
-		(at 160.02 49.53 180)
+		(at 160.02 44.45 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -2395,9 +2373,9 @@
 			)
 			(justify right)
 		)
-		(uuid "29743e1b-f358-4fac-b2f9-6967ce8196db")
+		(uuid "0d847d5e-6206-4dd9-85c5-c48a912ce242")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 152.4387 49.53 0)
+			(at 152.4387 44.45 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2407,7 +2385,7 @@
 			)
 		)
 	)
-	(global_label "Fan4"
+	(global_label "Fan3"
 		(shape input)
 		(at 160.02 46.99 180)
 		(fields_autoplaced yes)
@@ -2417,7 +2395,7 @@
 			)
 			(justify right)
 		)
-		(uuid "33279102-8463-4727-8736-19aaba27991c")
+		(uuid "29743e1b-f358-4fac-b2f9-6967ce8196db")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 152.4387 46.99 0)
 			(effects
@@ -2429,9 +2407,31 @@
 			)
 		)
 	)
+	(global_label "Fan4"
+		(shape input)
+		(at 160.02 49.53 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "33279102-8463-4727-8736-19aaba27991c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 152.4387 49.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
 	(global_label "Fan6"
 		(shape input)
-		(at 160.02 41.91 180)
+		(at 160.02 54.61 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -2441,7 +2441,7 @@
 		)
 		(uuid "3a8adfed-ce47-4e84-af1d-ad692621f3da")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 152.4387 41.91 0)
+			(at 152.4387 54.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2453,7 +2453,7 @@
 	)
 	(global_label "Fan1"
 		(shape input)
-		(at 160.02 54.61 180)
+		(at 160.02 41.91 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -2463,7 +2463,7 @@
 		)
 		(uuid "5054c2e6-dc21-40b5-9370-cd40cd6677b6")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 152.4387 54.61 0)
+			(at 152.4387 41.91 0)
 			(effects
 				(font
 					(size 1.27 1.27)
