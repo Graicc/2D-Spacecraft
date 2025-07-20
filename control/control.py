@@ -15,8 +15,8 @@
 
 import marimo
 
-__generated_with = "0.14.10"
-app = marimo.App(width="medium", layout_file="layouts/control.grid.json")
+__generated_with = "0.14.12"
+app = marimo.App(width="medium")
 
 
 @app.cell
@@ -59,7 +59,7 @@ def _(symbols):
         mass: 0.5, # 200 grams
         radius: 0.1, # 10 cm
         friction: 0.01, # TODO
-        rot_friction: 0, # TODO
+        rot_friction: 0.001, # TODO
         K_thrust: 0.1, # TODO
         d_thrust: 0.05, # TODO distance of thrusters from center
     }
@@ -262,9 +262,9 @@ def _(f_xdot, np):
         # Return trajectory and control inputs
         return trajectory, us
 
-    def simulate_system(t1, t2, t3, t4):
+    def simulate_system(t1, t2, t3, t4, x0 = np.zeros(6, dtype=np.float64), time_offset = 0):
         dt = 0.01
-        steps = 1200
+        steps = 1200 - int(time_offset / dt)
         t_span = (0, steps * dt)
         times = np.linspace(*t_span, steps + 1)
 
@@ -281,7 +281,7 @@ def _(f_xdot, np):
         v2 = np.array([0, 1])
         v3 = np.array([bp, bp])
         v4 = np.array([0, 0])
-    
+
         # Define time-dependent control input function
         def u_func(t):
             if t < c1:
@@ -303,8 +303,6 @@ def _(f_xdot, np):
         def dynamics(t, x):
             return f_xdot(x, u_func(t))
 
-        # Initial state
-        x0 = np.zeros(6, dtype=np.float64)
 
         # Integrate using scipy's solve_ivp with RK45
         sol = solve_ivp(dynamics, t_span, x0, t_eval=times, method='RK45', vectorized=False)
@@ -318,7 +316,13 @@ def _(f_xdot, np):
     # trajectory, us = simulate_system(1.25, 2.0, 1.40, 2.1)
     # _ = simulate_system(1.25, 0, 0, 0)
     # trajectory
-    return (simulate_system,)
+    return simulate_system, solve_ivp
+
+
+@app.cell
+def _(score_system, x0):
+    score_system(x0)
+    return
 
 
 @app.cell
@@ -328,6 +332,129 @@ def _(simulate_system):
 
 
 @app.cell
+def _(minimize, np, simulate_system):
+    class Controller:
+        def __init__(self, target, reference_ts):
+            self.target = target
+        
+            self.t1 = reference_ts[0]
+            self.t2 = reference_ts[1]
+            self.t3 = reference_ts[2]
+            self.t4 = reference_ts[3]
+
+            self.max_t = 0.1
+
+        def reoptimize(self, x, t):
+            print(f"time is {t}")
+            target = np.array([self.target[0], self.target[1], 0, 0, 0, 0], dtype=np.float64)
+            weight = np.array([1,1,0,10,10,10], dtype=np.float64)
+            def score_system(ts):
+                t1, t2, t3, t4 = ts
+                trajectory, us = simulate_system(t1, t2, t3, t4, x0 = x, time_offset = t)
+                final_pos = trajectory[-1]
+                final_offset = (final_pos - target)
+                final_offset *= weight
+                return np.inner(final_offset, final_offset)
+            # Constraints
+            constraints = [
+                # {'type': 'ineq', 'fun': lambda t: 10 - sum(t)},      # t1 + t2 + t3 + t4 <= 10
+                # {'type': 'ineq', 'fun': lambda t: t[0]},             # t1 >= 0
+                # {'type': 'ineq', 'fun': lambda t: t[1]},             # t2 >= 0
+                # {'type': 'ineq', 'fun': lambda t: t[2]},             # t3 >= 0
+                # {'type': 'ineq', 'fun': lambda t: t[3]}              # t4 >= 0
+            ]
+        
+            # x0 = [1.25, 2.0, 1.4, 2.1]
+            # x0 = [1.5,1,1,2]
+            t0 = np.array([self.t1 - t, self.t2, self.t3, self.t4])
+
+            print(f"x {x}")
+            print(f"orignal t {t0}")
+            print(f"orignal score {score_system(t0)}")
+        
+            result = minimize(score_system, t0, method='COBYLA', constraints=constraints)
+            if (result.success):
+                print(f"post t {result.x}")
+                print(f"post score {score_system(result.x)}")
+                # self.t1 = result.x[0] + t
+                # self.t2 = result.x[1]
+                # self.t3 = result.x[2]
+                # self.t4 = result.x[3]
+
+        def __call__(self, x, t):
+            if (t > self.max_t):
+                if (int(t) > int(self.max_t)) and t < 12:
+                # if t < 12:
+                # if t < 1.5:
+                    self.reoptimize(x, t)
+                self.max_t = t
+
+            c1 = self.t1
+            c2 = c1 + self.t1
+            c3 = c2 + self.t2
+            c4 = c3 + self.t3
+            c5 = c4 + self.t3
+            c6 = c5 + self.t4
+            bp = 0.5
+    
+            v1 = np.array([1, 0])
+            v2 = np.array([0, 1])
+            v3 = np.array([bp, bp])
+            v4 = np.array([0, 0])
+    
+            if t < c1:
+                return v1
+            elif t < c2:
+                return v2
+            elif t < c3:
+                return v3
+            elif t < c4:
+                return v2
+            elif t < c5:
+                return v1
+            elif t < c6:
+                return v3
+            else:
+                return v4
+    
+    return (Controller,)
+
+
+@app.cell
+def _(f_xdot, np, solve_ivp):
+    def simulate_real_system(controller):
+        dt = 0.01
+        steps = 1200
+        t_span = (0, steps * dt)
+        times = np.linspace(*t_span, steps + 1)
+
+        # Wrapper for solve_ivp to include control logic
+        def dynamics(t, x):
+            # return f_xdot(x, controller(x, t)) + np.array([0.05, 0, 0, 0, 0, 0])
+            return f_xdot(x, controller(x, t))
+
+        # Initial state
+        x0 = np.zeros(6, dtype=np.float64)
+
+        # Integrate using scipy's solve_ivp with RK45
+        sol = solve_ivp(dynamics, t_span, x0, t_eval=times, method='RK45', vectorized=False)
+
+        # Collect control inputs at sampled times
+        # us = np.array([controller(x, t) for x, t in zip(sol.y.T, sol.t)])
+        us = np.array([[0,0] for x, t in zip(sol.y.T, sol.t)])
+
+        return sol.y.T, us
+
+    return (simulate_real_system,)
+
+
+@app.cell
+def _():
+    from scipy.optimize import minimize
+    return (minimize,)
+
+
+@app.cell(hide_code=True)
 def _(np, simulate_system):
     target = np.array([0, -2, 0, 0, 0, 0], dtype=np.float64)
     weight = np.array([1,1,0,10,10,10], dtype=np.float64)
@@ -361,21 +488,22 @@ def _(np, simulate_system):
 
     #---------------------------------------------------------------------------------------------------
 
-    from scipy.optimize import minimize
 
-    # Constraints
-    constraints = [
-        {'type': 'ineq', 'fun': lambda t: 10 - sum(t)},      # t1 + t2 + t3 + t4 <= 10
-        {'type': 'ineq', 'fun': lambda t: t[0]},             # t1 >= 0
-        {'type': 'ineq', 'fun': lambda t: t[1]},             # t2 >= 0
-        {'type': 'ineq', 'fun': lambda t: t[2]},             # t3 >= 0
-        {'type': 'ineq', 'fun': lambda t: t[3]}              # t4 >= 0
-    ]
+    # # Constraints
+    # constraints = [
+    #     {'type': 'ineq', 'fun': lambda t: 10 - sum(t)},      # t1 + t2 + t3 + t4 <= 10
+    #     {'type': 'ineq', 'fun': lambda t: t[0]},             # t1 >= 0
+    #     {'type': 'ineq', 'fun': lambda t: t[1]},             # t2 >= 0
+    #     {'type': 'ineq', 'fun': lambda t: t[2]},             # t3 >= 0
+    #     {'type': 'ineq', 'fun': lambda t: t[3]}              # t4 >= 0
+    # ]
 
-    # x0 = [1.25, 2.0, 1.4, 2.1]
-    x0 = [1,0,0,0]
+    # # x0 = [1.25, 2.0, 1.4, 2.1]
+    # # x0 = [1.5,1,1,2]
+    # x0 = [1.61015073 + 0.01, 1.01817904 + 0.01, 0.99975761 + 0.01, 1.70355217 + 0.01]
 
-    result = minimize(score_system, x0, method='COBYLA', constraints=constraints)
+
+    # result = minimize(score_system, x0, method='COBYLA', constraints=constraints)
 
     #---------------------------------------------------------------------------------------------------
 
@@ -402,12 +530,11 @@ def _(np, simulate_system):
         print("Final score:", result.fun)
     else:
         print("Optimization failed:", result.message)
-
-    return result, score_system
+    return (score_system,)
 
 
 @app.cell
-def _(result, score_system, simulate_system):
+def _(Controller, simulate_real_system):
     # Optimal t values: [1.15435548 0.60977315 1.46371457 1.69800872]
     # Final score: 0.0003984068848688111
     # 0 -2 with bp = 0.5
@@ -416,8 +543,14 @@ def _(result, score_system, simulate_system):
     # Final score: 0.003275978508126181
     # 2 0 with bp = 0.5
 
-    trajectory, us = simulate_system(result.x[0], result.x[1], result.x[2], result.x[3])
-    score_system(result.x)
+    # trajectory, us = simulate_system(result.x[0], result.x[1], result.x[2], result.x[3])
+    # score_system(result.x)
+
+    #---------------------------------------------------------------------------------------------------
+    controller = Controller((0, -2), [1.59411804, 0.99583488, 1.03078605, 1.66871616] )
+    trajectory, us = simulate_real_system(controller)
+    # score_system(result.x)
+    #---------------------------------------------------------------------------------------------------
 
     # _ts = [1.25, 2.0, 1.40, 2.1]
     # _ts = [1.15435548, 0.60977315, 1.46371457, 1.69800872] # (0,-2)
@@ -427,6 +560,12 @@ def _(result, score_system, simulate_system):
     # trajectory, us = simulate_system(_ts[0], _ts[1], _ts[2], _ts[3])
     # score_system(_ts)
     return trajectory, us
+
+
+@app.cell
+def _(trajectory):
+    trajectory[11]
+    return
 
 
 @app.cell
