@@ -1508,6 +1508,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "fixed-point"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1088d5db52f7e984dc428b4dc2b38ccf3df05e1ff5424dae32c872376a535e9a"
+dependencies = [
+ "fixed-point-macros",
+ "num-traits",
+]
+
+[[package]]
+name = "fixed-point-macros"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8de66aba8617b5980612dab8acb84a067af23fa5c147238dbba09ab6ffa0b6c0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1536,6 +1557,7 @@ dependencies = [
  "embedded-io-async",
  "embedded-storage",
  "log",
+ "mpu6000",
 ]
 
 [[package]]
@@ -2400,6 +2422,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpu6000"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8787d1b6f5493e9ded7a590e6c98faed43db8cdc295eaa0cc196bd816e4275b0"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "fixed-point",
+]
+
+[[package]]
 name = "naga"
 version = "25.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3168,7 +3200,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

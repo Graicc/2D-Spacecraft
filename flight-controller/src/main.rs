@@ -9,14 +9,19 @@ use embassy_stm32::{
     Peri,
     gpio::{Level, Output, Speed},
     peripherals::{self, PA11, PA12, USB_OTG_FS},
+    spi::Spi,
     time::Hertz,
     usb::{self, Driver},
 };
-use embassy_time::{Duration, Timer};
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_time::{Delay, Duration, Timer};
 use embassy_usb::{
     Builder,
     class::cdc_acm::{CdcAcmClass, State},
 };
+use embedded_hal::{digital::OutputPin, spi::SpiBus};
+use mpu6000::{MPU6000, accelerometer_sensitive, gyro_sensitive};
 
 embassy_stm32::bind_interrupts!(struct Irqs {
     OTG_FS => usb::InterruptHandler<peripherals::USB_OTG_FS>;
@@ -117,11 +122,38 @@ async fn main(spawner: Spawner) -> ! {
     // Onboard led
     let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
 
+    let mut spi_config = embassy_stm32::spi::Config::default();
+    spi_config.frequency = Hertz(1_000_000);
+
+    let spi1 = Spi::new_blocking(p.SPI1, p.PA5, p.PA7, p.PA6, spi_config);
+    // let spi_bus = MPU6000::bus::SPIBus(spi1);
+    let spi_bus =
+        mpu6000::bus::SpiBus::new(spi1, Output::new(p.PA4, Level::Low, Speed::Low), Delay);
+    let mut mpu6000 = MPU6000::new(spi_bus);
+    let mut delay = Delay;
+    mpu6000
+        .reset(&mut Delay)
+        .unwrap_or_else(|_| panic!("Failed to reset MPU6000"));
+    mpu6000
+        .set_sleep(false)
+        .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
+
+    mpu6000
+        .set_accelerometer_sensitive(mpu6000::registers::AccelerometerSensitive::Sensitive2048)
+        .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
+    mpu6000
+        .set_gyro_sensitive(mpu6000::registers::GyroSensitive::Sensitive16_4)
+        .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
+
     loop {
-        led.set_high();
-        log::info!("Blink");
-        Timer::after(Duration::from_millis(100)).await;
-        led.set_low();
-        Timer::after(Duration::from_millis(100)).await;
+        // led.set_high();
+        // log::info!("Blink");
+        let acc = mpu6000
+            .read_acceleration()
+            .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
+        log::info!("{}, {}, {}", acc.0[0], acc.0[1], acc.0[2]);
+        Timer::after(Duration::from_millis(0)).await;
+        // led.set_low();
+        // Timer::after(Duration::from_millis(100)).await;
     }
 }

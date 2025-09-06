@@ -39,6 +39,7 @@ embassy-usb-logger = "0.5.1"
 log = "0.4.28"
 embassy-usb = "0.5.1"
 embassy-futures = "0.1.2"
+mpu6000 = "0.3.0"
 
 [profile.release]
 debug = 2
