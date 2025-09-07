@@ -13,15 +13,12 @@ use embassy_stm32::{
     time::Hertz,
     usb::{self, Driver},
 };
-use embassy_sync::blocking_mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{Delay, Duration, Ticker};
 use embassy_usb::{
     Builder,
     class::cdc_acm::{CdcAcmClass, State},
 };
-use embedded_hal::{digital::OutputPin, spi::SpiBus};
-use mpu6000::{MPU6000, accelerometer_sensitive, gyro_sensitive};
+use mpu6000::MPU6000;
 
 embassy_stm32::bind_interrupts!(struct Irqs {
     OTG_FS => usb::InterruptHandler<peripherals::USB_OTG_FS>;
@@ -75,7 +72,7 @@ async fn logger_task(
     );
 
     // Create classes on the builder.
-    let mut class = CdcAcmClass::new(&mut builder, &mut state, 64);
+    let class = CdcAcmClass::new(&mut builder, &mut state, 64);
 
     // Build the builder.
     let mut usb = builder.build();
@@ -120,7 +117,7 @@ async fn main(spawner: Spawner) -> ! {
         .unwrap();
 
     // Onboard led
-    let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
+    // let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
 
     let mut spi_config = embassy_stm32::spi::Config::default();
     spi_config.frequency = Hertz(1_000_000);
@@ -130,7 +127,6 @@ async fn main(spawner: Spawner) -> ! {
     let spi_bus =
         mpu6000::bus::SpiBus::new(spi1, Output::new(p.PA4, Level::Low, Speed::Low), Delay);
     let mut mpu6000 = MPU6000::new(spi_bus);
-    let mut delay = Delay;
     mpu6000
         .reset(&mut Delay)
         .unwrap_or_else(|_| panic!("Failed to reset MPU6000"));
@@ -145,14 +141,28 @@ async fn main(spawner: Spawner) -> ! {
         .set_gyro_sensitive(mpu6000::registers::GyroSensitive::Sensitive16_4)
         .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
 
+    let mut ticker = Ticker::every(Duration::from_millis(10));
     loop {
         // led.set_high();
         // log::info!("Blink");
         let acc = mpu6000
             .read_acceleration()
-            .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
-        log::info!("{}, {}, {}", acc.0[0], acc.0[1], acc.0[2]);
-        Timer::after(Duration::from_millis(0)).await;
+            .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"))
+            .0;
+        let gyro = mpu6000
+            .read_gyro()
+            .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"))
+            .0;
+        log::info!(
+            "{},{},{},{},{},{}",
+            acc[0],
+            acc[1],
+            acc[2],
+            gyro[0],
+            gyro[1],
+            gyro[2]
+        );
+        ticker.next().await;
         // led.set_low();
         // Timer::after(Duration::from_millis(100)).await;
     }
