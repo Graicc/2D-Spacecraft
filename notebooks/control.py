@@ -15,7 +15,7 @@
 
 import marimo
 
-__generated_with = "0.14.12"
+__generated_with = "0.15.2"
 app = marimo.App(width="medium")
 
 
@@ -336,7 +336,7 @@ def _(minimize, np, simulate_system):
     class Controller:
         def __init__(self, target, reference_ts):
             self.target = target
-        
+
             self.t1 = reference_ts[0]
             self.t2 = reference_ts[1]
             self.t3 = reference_ts[2]
@@ -363,7 +363,7 @@ def _(minimize, np, simulate_system):
                 # {'type': 'ineq', 'fun': lambda t: t[2]},             # t3 >= 0
                 # {'type': 'ineq', 'fun': lambda t: t[3]}              # t4 >= 0
             ]
-        
+
             # x0 = [1.25, 2.0, 1.4, 2.1]
             # x0 = [1.5,1,1,2]
             t0 = np.array([self.t1 - t, self.t2, self.t3, self.t4])
@@ -371,7 +371,7 @@ def _(minimize, np, simulate_system):
             print(f"x {x}")
             print(f"orignal t {t0}")
             print(f"orignal score {score_system(t0)}")
-        
+
             result = minimize(score_system, t0, method='COBYLA', constraints=constraints)
             if (result.success):
                 print(f"post t {result.x}")
@@ -396,12 +396,12 @@ def _(minimize, np, simulate_system):
             c5 = c4 + self.t3
             c6 = c5 + self.t4
             bp = 0.5
-    
+
             v1 = np.array([1, 0])
             v2 = np.array([0, 1])
             v3 = np.array([bp, bp])
             v4 = np.array([0, 0])
-    
+
             if t < c1:
                 return v1
             elif t < c2:
@@ -416,7 +416,7 @@ def _(minimize, np, simulate_system):
                 return v3
             else:
                 return v4
-    
+
     return (Controller,)
 
 
@@ -444,7 +444,6 @@ def _(f_xdot, np, solve_ivp):
         us = np.array([[0,0] for x, t in zip(sol.y.T, sol.t)])
 
         return sol.y.T, us
-
     return (simulate_real_system,)
 
 
@@ -629,7 +628,7 @@ def _(trajectory, us):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(np, trajectory):
     # Plotting the trajectory
     # using plotly
