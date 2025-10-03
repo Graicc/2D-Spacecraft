@@ -1,90 +1,16 @@
 #![no_std]
 #![no_main]
 
-use core::panic::PanicInfo;
-
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
 use embassy_stm32::{
-    Peri,
     gpio::{Level, Output, Speed},
-    peripherals::{self, PA11, PA12, USB_OTG_FS},
     spi::Spi,
     time::Hertz,
-    usb::{self, Driver},
 };
 use embassy_time::{Delay, Duration, Ticker};
-use embassy_usb::{
-    Builder,
-    class::cdc_acm::{CdcAcmClass, State},
-};
 use mpu6000::MPU6000;
 
-embassy_stm32::bind_interrupts!(struct Irqs {
-    OTG_FS => usb::InterruptHandler<peripherals::USB_OTG_FS>;
-});
-
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    log::error!("{info}"); // TODO: this doesn't work
-    cortex_m::asm::udf();
-}
-
-#[embassy_executor::task]
-async fn logger_task(
-    peri: Peri<'static, USB_OTG_FS>,
-    dp: Peri<'static, PA12>,
-    dm: Peri<'static, PA11>,
-) {
-    // Create the driver, from the HAL.
-    let mut ep_out_buffer = [0u8; 256];
-    let mut config = embassy_stm32::usb::Config::default();
-
-    // Do not enable vbus_detection. This is a safe default that works in all boards.
-    // However, if your USB device is self-powered (can stay powered on if USB is unplugged), you need
-    // to enable vbus_detection to comply with the USB spec. If you enable it, the board
-    // has to support it or USB won't work at all. See docs on `vbus_detection` for details.
-    config.vbus_detection = false;
-
-    let driver = Driver::new_fs(peri, Irqs, dp, dm, &mut ep_out_buffer, config);
-
-    // Create embassy-usb Config
-    let mut config = embassy_usb::Config::new(0xc0de, 0xcafe);
-    config.manufacturer = Some("Embassy");
-    config.product = Some("USB-serial example");
-    config.serial_number = Some("12345678");
-
-    // Create embassy-usb DeviceBuilder using the driver and config.
-    // It needs some buffers for building the descriptors.
-    let mut config_descriptor = [0; 256];
-    let mut bos_descriptor = [0; 256];
-    let mut control_buf = [0; 64];
-
-    let mut state = State::new();
-
-    let mut builder = Builder::new(
-        driver,
-        config,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut [], // no msos descriptors
-        &mut control_buf,
-    );
-
-    // Create classes on the builder.
-    let class = CdcAcmClass::new(&mut builder, &mut state, 64);
-
-    // Build the builder.
-    let mut usb = builder.build();
-
-    // This has to be before usb fut
-    let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Debug, class);
-
-    // Run the USB device.
-    let usb_fut = usb.run();
-
-    join(usb_fut, log_fut).await;
-}
+mod logger;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
@@ -113,7 +39,7 @@ async fn main(spawner: Spawner) -> ! {
     let p = embassy_stm32::init(config);
 
     spawner
-        .spawn(logger_task(p.USB_OTG_FS, p.PA12, p.PA11))
+        .spawn(logger::logger_task(p.USB_OTG_FS, p.PA12, p.PA11))
         .unwrap();
 
     // Onboard led
