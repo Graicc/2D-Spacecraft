@@ -2,14 +2,16 @@
 # requires-python = ">=3.13"
 # dependencies = [
 #     "casadi==3.7.1",
+#     "marimo",
 #     "numpy==2.3.2",
 #     "plotly==6.3.0",
+#     "uvicorn==0.35.0",
 # ]
 # ///
 
 import marimo
 
-__generated_with = "0.14.10"
+__generated_with = "0.16.3"
 app = marimo.App(width="medium")
 
 
@@ -71,8 +73,8 @@ def _(ca, px_d, py_d, theta, theta_d, ul, ur):
 @app.cell
 def _(ca, ode, u, x):
     T = 12 # Time horizon
-    # N = T * 100 # Number of control intervals
-    N = 120 # Number of control intervals
+    N = T * 10 # Number of control intervals
+    # N = 120 # Number of control intervals
 
     intg_options = {
         "tf": T/N,
@@ -143,17 +145,19 @@ def _(N, T, ca, go, np, plot_trajectory, sim):
 
     tgrid = np.linspace(0, T, N+1)
     def _():
-        x0 = [0,0,-3.14 / 2,0,0,0]
+        x0 = [0,0,0,0,0,0]
 
-        us = ca.repmat(ca.vertcat(1,1), 1, 20)
+        # us = ca.repmat(ca.vertcat(1,1), 1, 20)
+        # us = ca.vcat(map(lambda x: old_to_l_r(x * T/N, 1.59411804, 0.99583488, 1.03078605, 1.66871616), range(N)))
+        us = ca.hcat(list(map(lambda x: np.array(old_to_l_r(x * T/N, 1.59411804, 0.99583488, 1.03078605, 1.66871616)), range(N))))
 
         res = np.array(sim(x0, us))
-    
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=tgrid, y=res[0,:], mode='lines', name='px'))
         fig.add_trace(go.Scatter(x=tgrid, y=res[1,:], mode='lines', name='py'))
         fig.add_trace(go.Scatter(x=tgrid, y=res[2,:], mode='lines', name='theta'))
-    
+
         return plot_trajectory(res[0,:], res[1,:], res[2,:])
     _()
     return (tgrid,)
@@ -170,50 +174,106 @@ def _(F, N, ca):
     o_init = opti.parameter(6,1) # First measurement
     o_final = opti.parameter(2,1) # Last measurement
 
-    # opti.minimize(ca.sumsqr(o_u)) # Minimize control effort
-    _final = o_x[:,-1]
-    _err_x = ca.dot((_final[0] - o_final[0]),(_final[0] - o_final[0]))
-    _err_y = ca.dot((_final[1] - o_final[1]),(_final[1] - o_final[1]))
+    if False:
+        opti.minimize(ca.sumsqr(o_u)) # Minimize control effort
+        opti.subject_to(o_x[0,-1] == o_final[0])
+        opti.subject_to(o_x[1,-1] == o_final[1])
+    
+        opti.subject_to(o_x[3,-1] == 0)
+        opti.subject_to(o_x[4,-1] == 0)
+    else:
+        _final = o_x[:,-1]
+        _err_x = ca.dot((_final[0] - o_final[0]),(_final[0] - o_final[0]))
+        _err_y = ca.dot((_final[1] - o_final[1]),(_final[1] - o_final[1]))
+        opti.minimize(_err_x + _err_y + _final[3] ** 2 + _final[4] ** 2)
 
-    opti.minimize(_err_x + _err_y)
+    def lerp(a, b, t):
+        return a + t * (b-a)
 
     # Physics constraint
     for k in range(0,N):
         opti.subject_to(o_x[:,k+1] == F(o_x[:,k], o_u[:,k]))
 
-    # opti.subject_to(o_u[0,:] >= 0)
-    # opti.subject_to(o_u[1,:] >= 0)
-    opti.subject_to(o_u[0,:] >= -1)
-    opti.subject_to(o_u[1,:] >= -1)
+    opti.subject_to(o_u[0,:] >= 0)
+    opti.subject_to(o_u[1,:] >= 0)
+    # opti.subject_to(o_u[0,:] >= -1)
+    # opti.subject_to(o_u[1,:] >= -1)
+    # opti.subject_to(o_u[0,:] >= -0.5)
+    # opti.subject_to(o_u[1,:] >= -0.5)
 
     opti.subject_to(o_u[0,:] <= 1)
     opti.subject_to(o_u[1,:] <= 1)
+
     opti.subject_to(o_x[:,1] == o_init)
-    opti.subject_to(o_x[0,-1] == o_final[0])
-    opti.subject_to(o_x[1,-1] == o_final[1])
-    opti.subject_to(o_x[3,-1] == 0)
-    opti.subject_to(o_x[4,-1] == 0)
 
     opti
-    return o_final, o_init, o_u, o_x, opti
+    return lerp, o_final, o_init, o_u, o_x, opti
+
+
+@app.function
+def old_to_l_r(t, t1, t2, t3, t4) -> (float, float):
+    c1 = t1
+    c2 = c1 + t1
+    c3 = c2 + t2
+    c4 = c3 + t3
+    c5 = c4 + t3
+    c6 = c5 + t4
+    bp = 0.5
+    
+    v1 = (1.0, 0.0)
+    v2 = (0.0, 1.0)
+    v3 = (bp, bp)
+    v4 = (0.0, 0.0)
+    
+    if t < c1:
+        return v1
+    elif t < c2:
+        return v2
+    elif t < c3:
+        return v3
+    elif t < c4:
+        return v2
+    elif t < c5:
+        return v1
+    elif t < c6:
+        return v3
+    else:
+        return v4
 
 
 @app.cell
-def _(o_final, o_init, opti):
+def _(N, T, lerp, o_final, o_init, o_u, o_x, opti):
     opti_opts = {
-        "qpsol": "osqp",
-        # "qpsol": "qrqp",
+        # "qpsol": "osqp",
+        # "qpsol": "qpoases",
+        "qpsol": "qrqp",
+        # "qpsol": "proxqp",
         "print_header": False,
         "print_iteration": False,
         "print_time": False,
-        # "max_iter": 10000
+        "max_iter": 10000
     }
 
-    opti.solver('sqpmethod', opti_opts)
+    s_opts = {
+        "error_on_fail": False
+    }
+
+    opti.solver('sqpmethod', opti_opts, s_opts)
 
     # opti.set_value(o_init, [0,0,0,0,0,0])
-    opti.set_value(o_init, [0,0,-3.14 / 2,0,0,0])
-    opti.set_value(o_final, [0,-2])
+    opti.set_value(o_init, [0,0,0,0,0,0])
+    # final = [2,0]
+    final = [0,-2]
+    opti.set_value(o_final, final)
+
+    for _k in range(0,N):
+        opti.set_initial(o_x[0,_k], lerp(0, final[0], _k/N))
+        opti.set_initial(o_x[1,_k], lerp(0, final[1], _k/N))
+        opti.set_initial(o_x[2,_k], lerp(0, 3.14, _k/N))
+        (_ul, _ur) = old_to_l_r(_k * T/N, 1.59411804, 0.99583488, 1.03078605, 1.66871616)
+        opti.set_initial(o_u[1,_k], _ul)
+        opti.set_initial(o_u[1,_k], _ur)
+
     sol = opti.solve()
     return (sol,)
 
@@ -231,25 +291,25 @@ def _(np, o_x, plot_trajectory, sol):
 
 
 @app.cell
-def _(go, np, o_u, o_x, opti, tgrid):
+def _(go, np, o_u, o_x, sol, tgrid):
     def _():
-        sol = opti.debug
+        # sol = opti.debug
         xs = np.array(sol.value(o_x))[0,:]
         ys = np.array(sol.value(o_x))[1,:]
         ts = np.array(sol.value(o_x))[2,:]
-        xds = np.array(sol.value(o_x))[3,:]
-        yds = np.array(sol.value(o_x))[4,:]
-        tds = np.array(sol.value(o_x))[5,:]
+        # xds = np.array(sol.value(o_x))[3,:]
+        # yds = np.array(sol.value(o_x))[4,:]
+        # tds = np.array(sol.value(o_x))[5,:]
 
         uls = np.array(sol.value(o_u))[0,:]
         urs = np.array(sol.value(o_u))[1,:]
         # print(sol.value(o_x[:,100]))
-    
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=tgrid, y=xs, mode='lines', name='px'))
         fig.add_trace(go.Scatter(x=tgrid, y=ys, mode='lines', name='py'))
         fig.add_trace(go.Scatter(x=tgrid, y=ts, mode='lines', name='theta'))
-    
+
         fig.add_trace(go.Scatter(x=tgrid, y=uls, mode='lines', name='ul'))
         fig.add_trace(go.Scatter(x=tgrid, y=urs, mode='lines', name='ur'))
 

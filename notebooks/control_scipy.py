@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
+#     "control==0.10.2",
 #     "imageio==2.37.0",
 #     "ipython==9.4.0",
 #     "kaleido==1.0.0",
@@ -15,7 +16,7 @@
 
 import marimo
 
-__generated_with = "0.15.2"
+__generated_with = "0.16.3"
 app = marimo.App(width="medium")
 
 
@@ -27,7 +28,6 @@ def _():
 
 @app.cell
 def _():
-    import control as ctrl
     import numpy as np
     return (np,)
 
@@ -416,7 +416,6 @@ def _(minimize, np, simulate_system):
                 return v3
             else:
                 return v4
-
     return (Controller,)
 
 
