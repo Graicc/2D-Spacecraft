@@ -18,6 +18,7 @@ use messages;
 
 mod imu;
 mod logger;
+mod motor;
 mod state;
 
 assign_resources! {
@@ -32,6 +33,10 @@ assign_resources! {
         mosi: PA7,
         miso: PA6,
         cs: PA4
+    },
+    motor: MotorResource {
+        motor_pin: PB0,
+        tim: TIM3,
     }
 }
 
@@ -71,6 +76,8 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(logger::logger_task(r.logger)).unwrap();
 
     spawner.spawn(imu::imu_task(r.imu)).unwrap();
+
+    spawner.spawn(motor::motor_task(r.motor)).unwrap();
 
     let mut cfg = embassy_stm32::usart::Config::default();
     cfg.baudrate = 115_200;
