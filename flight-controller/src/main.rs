@@ -1,21 +1,48 @@
 #![no_std]
 #![no_main]
 
+use assign_resources::assign_resources;
 use embassy_executor::Spawner;
+use embassy_stm32::Peri;
 use embassy_stm32::{
     gpio::{Level, Output, Speed},
-    spi::Spi,
+    peripherals,
     time::Hertz,
 };
-use embassy_time::{Delay, Duration, Ticker};
-use mpu6000::MPU6000;
+use embassy_time::{Duration, Ticker};
 
+use crate::imu::CURRENT_STATE;
+use crate::state::State;
+
+use messages;
+
+mod imu;
 mod logger;
+mod state;
+
+assign_resources! {
+    logger: LoggerResource {
+        peri: USB_OTG_FS,
+        dp: PA12,
+        dm: PA11,
+    },
+    imu: IMUResource {
+        peri: SPI1,
+        sck: PA5,
+        mosi: PA7,
+        miso: PA6,
+        cs: PA4
+    }
+}
+
+embassy_stm32::bind_interrupts!(struct SerialPort1IRQs {
+    USART1 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART1>;
+});
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
-    let mut config = embassy_stm32::Config::default();
-    {
+    let config = {
+        let mut config = embassy_stm32::Config::default();
         use embassy_stm32::rcc::*;
         config.rcc.hse = Some(Hse {
             freq: Hertz(8_000_000),
@@ -35,61 +62,54 @@ async fn main(spawner: Spawner) -> ! {
         config.rcc.apb2_pre = APBPrescaler::DIV2;
         config.rcc.sys = Sysclk::PLL1_P;
         config.rcc.mux.clk48sel = mux::Clk48sel::PLL1_Q;
-    }
-    let p = embassy_stm32::init(config);
+        config
+    };
 
-    spawner
-        .spawn(logger::logger_task(p.USB_OTG_FS, p.PA12, p.PA11))
-        .unwrap();
+    let p = embassy_stm32::init(config);
+    let r = split_resources!(p);
+
+    spawner.spawn(logger::logger_task(r.logger)).unwrap();
+
+    spawner.spawn(imu::imu_task(r.imu)).unwrap();
+
+    let mut cfg = embassy_stm32::usart::Config::default();
+    cfg.baudrate = 115_200;
+    let mut uart = embassy_stm32::usart::Uart::new(
+        p.USART1,
+        p.PA10,
+        p.PA9,
+        SerialPort1IRQs,
+        p.DMA2_CH7,
+        p.DMA2_CH2,
+        cfg,
+    )
+    .unwrap();
 
     // Onboard led
-    // let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
-
-    let mut spi_config = embassy_stm32::spi::Config::default();
-    spi_config.frequency = Hertz(1_000_000);
-
-    let spi1 = Spi::new_blocking(p.SPI1, p.PA5, p.PA7, p.PA6, spi_config);
-    // let spi_bus = MPU6000::bus::SPIBus(spi1);
-    let spi_bus =
-        mpu6000::bus::SpiBus::new(spi1, Output::new(p.PA4, Level::Low, Speed::Low), Delay);
-    let mut mpu6000 = MPU6000::new(spi_bus);
-    mpu6000
-        .reset(&mut Delay)
-        .unwrap_or_else(|_| panic!("Failed to reset MPU6000"));
-    mpu6000
-        .set_sleep(false)
-        .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
-
-    mpu6000
-        .set_accelerometer_sensitive(mpu6000::registers::AccelerometerSensitive::Sensitive2048)
-        .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
-    mpu6000
-        .set_gyro_sensitive(mpu6000::registers::GyroSensitive::Sensitive16_4)
-        .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"));
+    let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
 
     let mut ticker = Ticker::every(Duration::from_millis(10));
     loop {
-        // led.set_high();
-        // log::info!("Blink");
-        let acc = mpu6000
-            .read_acceleration()
-            .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"))
-            .0;
-        let gyro = mpu6000
-            .read_gyro()
-            .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"))
-            .0;
-        log::info!(
-            "{},{},{},{},{},{}",
-            acc[0],
-            acc[1],
-            acc[2],
-            gyro[0],
-            gyro[1],
-            gyro[2]
-        );
+        led.toggle();
+
+        let state = CURRENT_STATE.wait().await;
+        let target_state: State = Default::default();
+
+        let err = target_state - state;
+
+        // Just doing a P controller for now
+        let cmd_vel = messages::CMDVelValues {
+            vx: err.px * 0.1,
+            vy: err.py * 0.1,
+            vt: err.pt * 0.1,
+        };
+        let message = messages::Message::CMDVel(cmd_vel);
+
+        match messages::send(&mut uart, &message).await {
+            Ok(_) => {}
+            Err(_) => log::error!("Failed to send message"),
+        }
+
         ticker.next().await;
-        // led.set_low();
-        // Timer::after(Duration::from_millis(100)).await;
     }
 }

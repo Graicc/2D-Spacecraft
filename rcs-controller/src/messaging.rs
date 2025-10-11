@@ -7,7 +7,8 @@ pub static CURRENT_CMD_VEL: Signal<CriticalSectionRawMutex, messages::CMDVelValu
 
 #[embassy_executor::task]
 pub async fn messaging_task(uart: UART0<'static>, rx: GPIO21<'static>, tx: GPIO22<'static>) {
-    let mut uart = esp_hal::uart::Uart::new(uart, Default::default())
+    let cfg = esp_hal::uart::Config::default().with_baudrate(115_200);
+    let mut uart = esp_hal::uart::Uart::new(uart, cfg)
         .unwrap()
         .with_rx(rx)
         .with_tx(tx)

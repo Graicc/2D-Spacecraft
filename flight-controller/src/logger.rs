@@ -1,14 +1,15 @@
+use core::panic::PanicInfo;
 use embassy_futures::join::join;
 use embassy_stm32::{
-    Peri,
-    peripherals::{self, PA11, PA12, USB_OTG_FS},
+    peripherals::{self},
     usb::{self, Driver},
 };
 use embassy_usb::{
     Builder,
     class::cdc_acm::{CdcAcmClass, State},
 };
-use core::panic::PanicInfo;
+
+use crate::LoggerResource;
 
 embassy_stm32::bind_interrupts!(struct Irqs {
     OTG_FS => usb::InterruptHandler<peripherals::USB_OTG_FS>;
@@ -21,11 +22,9 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[embassy_executor::task]
-pub async fn logger_task(
-    peri: Peri<'static, USB_OTG_FS>,
-    dp: Peri<'static, PA12>,
-    dm: Peri<'static, PA11>,
-) {
+pub async fn logger_task(res: LoggerResource) {
+    let LoggerResource { peri, dp, dm } = res;
+
     // Create the driver, from the HAL.
     let mut ep_out_buffer = [0u8; 256];
     let mut config = embassy_stm32::usb::Config::default();
