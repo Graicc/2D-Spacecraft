@@ -12,12 +12,13 @@ app = flask.Flask(__name__)
 _tracker_lock = threading.Lock()
 _tracker = Tracker()
 
+
 @app.get("/position")
 def camera_position():
     with _tracker_lock:
         pos = _tracker.get_position()
 
-    return flask.jsonify(None if pos is None else {"x": pos[0], "y": pos[1]})
+    return flask.jsonify(pos)
 
 
 @app.get("/image")
@@ -48,7 +49,6 @@ def main():
     tracker_thread = threading.Thread(None, do_tracker_thread)
     tracker_thread.start()
     app.run()
-    pass
 
 
 if __name__ == "__main__":
