@@ -1,0 +1,4 @@
+[workspace]
+resolver = "2"
+members = ["flight-controller", "gui", "messages", "rcs-controller"]
+# exclude = ["rcs-controller"]

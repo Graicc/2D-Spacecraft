@@ -16,8 +16,7 @@ embassy_stm32::bind_interrupts!(struct Irqs {
 });
 
 #[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    log::error!("{info}"); // TODO: this doesn't work
+fn panic(_info: &PanicInfo) -> ! {
     cortex_m::asm::udf();
 }
 
@@ -67,7 +66,7 @@ pub async fn logger_task(res: LoggerResource) {
     let mut usb = builder.build();
 
     // This has to be before usb fut
-    let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Debug, class);
+    let log_fut = embassy_usb_logger::with_class!(1024, log::LevelFilter::Info, class);
 
     // Run the USB device.
     let usb_fut = usb.run();
