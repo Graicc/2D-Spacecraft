@@ -1,5 +1,6 @@
 use defmt::println;
 use embassy_time::{Duration, Ticker};
+use esp_hal::gpio;
 use esp_hal::ledc::channel::ChannelIFace;
 use esp_hal::ledc::timer::TimerIFace;
 use esp_hal::ledc::Ledc;
@@ -58,7 +59,7 @@ pub async fn control_task(
         fan.configure(channel::config::Config {
             timer: &lstimer0,
             duty_pct: 0,
-            pin_config: channel::config::PinConfig::PushPull,
+            drive_mode: gpio::DriveMode::PushPull,
         })
         .unwrap();
     }

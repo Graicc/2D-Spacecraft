@@ -9,7 +9,6 @@
 use crate::{control::control_task, messaging::messaging_task};
 use embassy_executor::Spawner;
 use esp_hal::clock::CpuClock;
-use esp_hal::timer::timg::TimerGroup;
 use {esp_backtrace as _, esp_println as _};
 
 mod control;
@@ -19,13 +18,10 @@ mod messaging;
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let p = esp_hal::init(config);
-
-    let timer0 = TimerGroup::new(p.TIMG1);
-    esp_hal_embassy::init(timer0.timer0);
 
     spawner
         .spawn(messaging_task(p.UART0, p.GPIO21, p.GPIO22))
