@@ -9,7 +9,7 @@
 use crate::{control::control_task, messaging::messaging_task, wifi::UdpConnection};
 use defmt::println;
 use embassy_executor::Spawner;
-use embassy_net::{udp::UdpSocket, StackResources};
+use embassy_net::{udp::UdpSocket, DhcpConfig, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::{assign_resources, clock::CpuClock};
 use esp_radio::wifi::{ClientConfig, ModeConfig};
@@ -74,7 +74,10 @@ async fn main(spawner: Spawner) {
         const PASSWORD: &str = "tacholycos";
 
         let wifi_sta_device = interfaces.sta;
-        let sta_config = embassy_net::Config::dhcpv4(Default::default());
+        let mut dhcp_config: DhcpConfig = Default::default();
+        let hostname: heapless::String<32> = heapless::String::try_from("ESP32").unwrap();
+        dhcp_config.hostname = Some(hostname);
+        let sta_config = embassy_net::Config::dhcpv4(dhcp_config);
 
         let rng = esp_hal::rng::Rng::new();
         let seed = (rng.random() as u64) << 32 | rng.random() as u64;

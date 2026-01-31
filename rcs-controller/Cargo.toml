@@ -38,11 +38,13 @@ esp-alloc = { version = "0.9.0", features = ["esp32"] }
 # smoltcp = "0.12.0"
 embassy-net = { version = "0.8.0", features = [
   "dhcpv4",
+  "dhcpv4-hostname",
   "medium-ethernet",
   "tcp",
   "udp",
 ] }
 embedded-io-async = "0.7.0"
+heapless = "0.8.0"
 
 
 [profile.dev]

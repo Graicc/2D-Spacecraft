@@ -1427,6 +1427,7 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "heapless 0.8.0",
  "messages",
  "nalgebra",
  "static_cell",
