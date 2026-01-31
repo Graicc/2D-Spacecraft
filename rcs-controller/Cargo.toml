@@ -16,12 +16,33 @@ esp-backtrace = { version = "0.18.1", features = [
   "esp32",
   "panic-handler",
 ] }
-esp-rtos = { version = "0.2.0", features = ["defmt", "esp32", "embassy"] }
+esp-rtos = { version = "0.2.0", features = [
+  "defmt",
+  "esp32",
+  "embassy",
+  "esp-radio",
+  "esp-alloc",
+] }
 esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32"] }
 static_cell = "2.1.1"
 messages = { path = "../messages" }
 embassy-sync = "0.7.2"
 nalgebra = { version = "0.34.1", default-features = false }
+esp-radio = { version = "0.17.0", features = [
+  "esp32",
+  "wifi",
+  "esp-alloc",
+  # "smoltcp",
+] }
+esp-alloc = { version = "0.9.0", features = ["esp32"] }
+# smoltcp = "0.12.0"
+embassy-net = { version = "0.8.0", features = [
+  "dhcpv4",
+  "medium-ethernet",
+  "tcp",
+  "udp",
+] }
+embedded-io-async = "0.7.0"
 
 
 [profile.dev]

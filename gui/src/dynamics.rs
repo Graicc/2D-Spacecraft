@@ -1,10 +1,10 @@
 use crate::{to_ui_pos, to_ui_vec, Float, Vec2};
 
 use eframe::{
-    egui::{self, Color32, Frame, Rect, Stroke},
-    emath::{self, RectTransform},
+    egui::{self, Color32, Stroke},
+    emath::RectTransform,
 };
-use nalgebra::{Rotation2, Vector2};
+use nalgebra::Rotation2;
 
 #[derive(Debug, Default)]
 pub struct State {

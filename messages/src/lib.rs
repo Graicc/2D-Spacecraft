@@ -1,10 +1,13 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "std")]
+extern crate core;
 
 use core::{marker::PhantomData, ops::Range};
 
 use postcard::{
     accumulator::{CobsAccumulator, FeedResult},
-    to_vec_cobs,
+    from_bytes_cobs, to_vec_cobs,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +21,12 @@ pub struct CMDVelValues {
     pub vx: f32,
     pub vy: f32,
     pub vt: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum WifiMessage {
+    Ping(u64),
+    Pong(u64),
 }
 
 pub async fn send<T, Tx>(tx: &mut Tx, message: &T) -> Result<(), ()>
@@ -36,6 +45,24 @@ where
     let to_transmit = &buf[0..=zero_index];
 
     tx.write_all(to_transmit).await.map_err(|_| ())
+}
+
+#[cfg(feature = "std")]
+pub fn send_sync<T>(tx: &mut std::net::UdpSocket, message: &T) -> Result<(), ()>
+where
+    T: serde::Serialize,
+{
+    let buf: heapless::Vec<u8, 256> = to_vec_cobs(message).map_err(|_| ())?;
+
+    let zero_index = buf
+        .iter()
+        .enumerate()
+        .find_map(|(i, &b)| if b == 0 { Some(i) } else { None })
+        .ok_or(())?;
+
+    let to_transmit = &buf[0..=zero_index];
+
+    tx.send(to_transmit).map(|_| ()).map_err(|_| ())
 }
 
 pub struct Receiver<T, const C: usize, const B: usize>
@@ -147,4 +174,26 @@ mod tests {
             ]
         );
     }
+}
+
+pub async fn receive_single_read<T, Rx>(rx: &mut Rx) -> Result<T, ()>
+where
+    T: for<'de> serde::Deserialize<'de>,
+    Rx: embedded_io_async::Read,
+{
+    let mut buf: [u8; 256] = [0; 256];
+    let count = rx.read(&mut buf).await.map_err(|_| ())?;
+
+    from_bytes_cobs(&mut buf[0..count]).map_err(|_| ())
+}
+
+#[cfg(feature = "std")]
+pub fn receive_sync<T>(rx: &mut std::net::UdpSocket) -> Result<T, ()>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    let mut buf: [u8; 256] = [0; 256];
+    let count = rx.recv(&mut buf).map_err(|_| ())?;
+
+    from_bytes_cobs(&mut buf[0..count]).map_err(|_| ())
 }

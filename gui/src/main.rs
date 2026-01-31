@@ -1,12 +1,15 @@
 #![allow(dead_code, unused_variables)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::net::UdpSocket;
+
 use dynamics::{Simulation, State};
 use eframe::{
-    egui::{self, Color32, Frame, Rect, Stroke},
-    emath::{self, RectTransform},
+    egui::{self, Frame, Rect},
+    emath::{self},
 };
-use nalgebra::{Rotation2, Vector2};
+use messages::WifiMessage;
+use nalgebra::Vector2;
 
 type Float = f64;
 type Vec2 = Vector2<Float>;
@@ -173,6 +176,15 @@ impl eframe::App for App {
                             self.simulation.controller.target.force.z = 0.0;
                         }
                     });
+
+                    if ui.button("Ping").clicked() {
+                        let mut socket =
+                            UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 1234)).unwrap();
+                        socket.connect("192.168.137.98:1234").unwrap();
+                        messages::send_sync(&mut socket, &messages::WifiMessage::Ping(67)).unwrap();
+                        let response = messages::receive_sync::<WifiMessage>(&mut socket).unwrap();
+                        println!("Response: {response:?}")
+                    };
                 });
 
             egui::CentralPanel::default().show_inside(ui, |ui| {
