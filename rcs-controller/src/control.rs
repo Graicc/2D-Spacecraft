@@ -72,7 +72,7 @@ pub async fn control_task(
     loop {
         let cmd_vel = messaging::CURRENT_CMD_VEL.wait().await;
 
-        println!("Setting fans!");
+        // println!("Setting fans!");
         let fan_speeds = cmd_vel_to_fans(cmd_vel);
         let fan_values = fan_speeds
             .iter()

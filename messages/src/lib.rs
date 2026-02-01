@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Message {
     CMDVel(CMDVelValues),
+    IMUReading(IMUReading),
+    MotorValues(MotorValues),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -24,9 +26,24 @@ pub struct CMDVelValues {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct IMUReading {
+    pub acc: [f32; 3],
+    pub gyro: [f32; 3],
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct MotorValues {
+    pub left: u32,
+    pub right: u32,
+    pub base: u32,
+}
+
+// TODO: Split into host -> client and client -> host enums
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum WifiMessage {
     Ping(u64),
     Pong(u64),
+    IMUReading(IMUReading),
 }
 
 pub async fn send<T, Tx>(tx: &mut Tx, message: &T) -> Result<(), ()>
@@ -48,7 +65,7 @@ where
 }
 
 #[cfg(feature = "std")]
-pub fn send_sync<T>(tx: &mut std::net::UdpSocket, message: &T) -> Result<(), ()>
+pub fn send_sync<T>(tx: &std::net::UdpSocket, message: &T) -> Result<(), ()>
 where
     T: serde::Serialize,
 {
@@ -161,7 +178,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let serailized: heapless::Vec<u8, 100> = to_vec(&Message::CMDVel(CMDVelValues {
+        let serailized: heapless::Vec<u8, 100> = postcard::to_vec(&Message::CMDVel(CMDVelValues {
             vx: 0.0,
             vy: 0.0,
             vt: 0.0,
@@ -188,7 +205,7 @@ where
 }
 
 #[cfg(feature = "std")]
-pub fn receive_sync<T>(rx: &mut std::net::UdpSocket) -> Result<T, ()>
+pub fn receive_sync<T>(rx: &std::net::UdpSocket) -> Result<T, ()>
 where
     T: for<'de> serde::Deserialize<'de>,
 {

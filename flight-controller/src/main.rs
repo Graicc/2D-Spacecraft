@@ -11,7 +11,7 @@ use embassy_stm32::{
 };
 use embassy_time::{Duration, Ticker};
 
-use crate::imu::CURRENT_STATE;
+use crate::imu::{CURRENT_IMU, CURRENT_STATE};
 use crate::state::State;
 
 use messages;
@@ -35,8 +35,16 @@ assign_resources! {
         cs: PA4
     },
     motor: MotorResource {
-        motor_pin: PB0,
-        tim: TIM3,
+        // Motor 1: Left prop
+        // Motor 2: Unused
+        // Motor 3: Right prop
+        // Motor 4: Base
+        motor_1_pin: PB0,
+        motor_2_pin: PB1,
+        motor_3_pin: PA3,
+        motor_4_pin: PA2,
+        tim2: TIM2,
+        tim3: TIM3,
     }
 }
 
@@ -100,6 +108,7 @@ async fn main(spawner: Spawner) -> ! {
         led.toggle();
 
         let state = CURRENT_STATE.wait().await;
+
         let target_state: State = Default::default();
 
         let err = target_state - state;
@@ -115,6 +124,13 @@ async fn main(spawner: Spawner) -> ! {
         match messages::send(&mut uart, &message).await {
             Ok(_) => {}
             Err(_) => log::error!("Failed to send message"),
+        }
+
+        if let Some(imu) = CURRENT_IMU.try_take() {
+            match messages::send(&mut uart, &messages::Message::IMUReading(imu)).await {
+                Ok(_) => {}
+                Err(_) => log::error!("Failed to send IMU"),
+            }
         }
 
         ticker.next().await;

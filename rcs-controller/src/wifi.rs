@@ -67,7 +67,7 @@ impl<'a> embedded_io_async::Read for UdpConnection<'a> {
             .await
             .map_err(|_| UdpConnectionError())?;
 
-        if self.endpoint.is_none()  {
+        if self.endpoint.is_none() {
             self.endpoint = Some(metadata.endpoint);
         }
 

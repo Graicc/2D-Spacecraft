@@ -6,9 +6,14 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use crate::{control::control_task, messaging::messaging_task, wifi::UdpConnection};
-use defmt::println;
+use crate::{
+    control::control_task,
+    messaging::{messaging_task, CURRENT_IMU_READING},
+    wifi::UdpConnection,
+};
+use defmt::{debug, println};
 use embassy_executor::Spawner;
+use embassy_futures::select::select;
 use embassy_net::{udp::UdpSocket, DhcpConfig, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::{assign_resources, clock::CpuClock};
@@ -130,22 +135,43 @@ async fn main(spawner: Spawner) {
 
         let mut udp_connection = UdpConnection::new(socket);
 
-        loop {
-            println!("Waiting for data..");
-            let data =
-                messages::receive_single_read::<messages::WifiMessage, _>(&mut udp_connection)
-                    .await
-                    .unwrap();
-            defmt::debug!("Data got {:?}", data);
+        println!("Waiting for first packet to identify host");
+        let data = messages::receive_single_read::<messages::WifiMessage, _>(&mut udp_connection)
+            .await
+            .unwrap();
+        println!("Got first packet");
 
-            match data {
-                messages::WifiMessage::Ping(num) => {
+        loop {
+            match select(
+                messages::receive_single_read::<messages::WifiMessage, _>(&mut udp_connection),
+                CURRENT_IMU_READING.wait(),
+            )
+            .await
+            {
+                embassy_futures::select::Either::First(Ok(messages::WifiMessage::Ping(num))) => {
+                    debug!("Got ping, sending pong");
                     messages::send(&mut udp_connection, &messages::WifiMessage::Pong(num))
                         .await
                         .unwrap();
                 }
-                messages::WifiMessage::Pong(_) => todo!(),
+                embassy_futures::select::Either::First(Ok(
+                    messages::WifiMessage::Pong(_) | messages::WifiMessage::IMUReading(_),
+                )) => {
+                    todo!()
+                }
+                embassy_futures::select::Either::First(Err(_)) => {}
+                embassy_futures::select::Either::Second(imu_reading) => {
+                    debug!("Sending IMU reading");
+                    messages::send(
+                        &mut udp_connection,
+                        &messages::WifiMessage::IMUReading(imu_reading),
+                    )
+                    .await
+                    .unwrap();
+                }
             }
         }
     }
 }
+
+mod tests {}

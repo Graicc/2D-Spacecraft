@@ -8,6 +8,7 @@ eframe = "0.33"
 log = "0.4"
 nalgebra = "0.34.1"
 messages = { path = "../messages", features = ["std"] }
+egui_plot = "0.34.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
