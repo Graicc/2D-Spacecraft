@@ -3,19 +3,25 @@
 
 use assign_resources::assign_resources;
 use embassy_executor::Spawner;
-use embassy_stm32::Peri;
+use embassy_futures::select::Either::{First, Second};
+use embassy_futures::select::select;
+use embassy_stm32::{Peri, usb};
 use embassy_stm32::{
     gpio::{Level, Output, Speed},
     peripherals,
     time::Hertz,
 };
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Ticker};
 
+use crate::battery_monitor::BATTERY_VOLTAGE;
 use crate::imu::{CURRENT_IMU, CURRENT_STATE};
+use crate::logger::logger_task;
+use crate::motor::SET_MOTOR_STATE;
 use crate::state::State;
 
-use messages;
+use messages::{self, Message};
 
+mod battery_monitor;
 mod imu;
 mod logger;
 mod motor;
@@ -45,11 +51,20 @@ assign_resources! {
         motor_4_pin: PA2,
         tim2: TIM2,
         tim3: TIM3,
+    },
+    battery_monitor: BatteryMonitorResource {
+        adc: ADC1,
+        pin: PC2,
+        dma: DMA2_CH0
     }
 }
 
 embassy_stm32::bind_interrupts!(struct SerialPort1IRQs {
     USART1 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART1>;
+});
+
+embassy_stm32::bind_interrupts!(struct Irqs {
+    OTG_FS => usb::InterruptHandler<peripherals::USB_OTG_FS>;
 });
 
 #[embassy_executor::main]
@@ -81,32 +96,60 @@ async fn main(spawner: Spawner) -> ! {
     let p = embassy_stm32::init(config);
     let r = split_resources!(p);
 
-    spawner.spawn(logger::logger_task(r.logger)).unwrap();
+    {
+        const EP_OUT_BUFFER_SIZE: usize = 10 * 1024;
+        pub static EP_OUT_BUFFER: static_cell::StaticCell<[u8; EP_OUT_BUFFER_SIZE]> =
+            static_cell::StaticCell::new();
+        let mut config = embassy_stm32::usb::Config::default();
+        config.vbus_detection = false;
+        let usb_driver = embassy_stm32::usb::Driver::new_fs(
+            r.logger.peri,
+            Irqs,
+            r.logger.dp,
+            r.logger.dm,
+            EP_OUT_BUFFER.init([0; _]),
+            config,
+        );
+        spawner.spawn(logger_task(usb_driver)).unwrap();
+    }
 
     spawner.spawn(imu::imu_task(r.imu)).unwrap();
 
     spawner.spawn(motor::motor_task(r.motor)).unwrap();
 
-    let mut cfg = embassy_stm32::usart::Config::default();
-    cfg.baudrate = 115_200;
-    let mut uart = embassy_stm32::usart::Uart::new(
+    spawner
+        .spawn(battery_monitor::battery_monitor_task(r.battery_monitor))
+        .unwrap();
+
+    // Onboard led
+    let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
+    led.set_low();
+
+    let mut uart_config = embassy_stm32::usart::Config::default();
+    uart_config.baudrate = 115_200;
+    let uart = embassy_stm32::usart::Uart::new(
         p.USART1,
         p.PA10,
         p.PA9,
         SerialPort1IRQs,
         p.DMA2_CH7,
         p.DMA2_CH2,
-        cfg,
+        uart_config,
     )
     .unwrap();
+    let (mut uart_tx, uart_rx) = uart.split();
+    let mut uart_rx_buf = [0u8; 1024];
+    let mut uart_rx = uart_rx.into_ring_buffered(&mut uart_rx_buf);
 
-    // Onboard led
-    let mut led: Output<'_> = Output::new(p.PB5, Level::High, Speed::Low);
+    let mut receiver: messages::Receiver<Message, 256, 32> = messages::Receiver::new();
+
+    let mut last_heartbeat = Instant::now();
+
+    let mut last_voltage: u32 = 0;
+    let mut current_motor_values: messages::MotorValues = Default::default();
 
     let mut ticker = Ticker::every(Duration::from_millis(10));
     loop {
-        led.toggle();
-
         let state = CURRENT_STATE.wait().await;
 
         let target_state: State = Default::default();
@@ -121,18 +164,46 @@ async fn main(spawner: Spawner) -> ! {
         };
         let message = messages::Message::CMDVel(cmd_vel);
 
-        match messages::send(&mut uart, &message).await {
+        match messages::send(&mut uart_tx, &message).await {
             Ok(_) => {}
             Err(_) => log::error!("Failed to send message"),
         }
 
-        if let Some(imu) = CURRENT_IMU.try_take() {
-            match messages::send(&mut uart, &messages::Message::IMUReading(imu)).await {
+        last_voltage = BATTERY_VOLTAGE.try_take().unwrap_or(last_voltage);
+
+        if let Some(imu_status) = CURRENT_IMU.try_take() {
+            match messages::send(
+                &mut uart_tx,
+                &messages::Message::StateUpdate(messages::StateUpdate {
+                    imu_status,
+                    voltage: last_voltage,
+                    motor_values: current_motor_values.clone(),
+                }),
+            )
+            .await
+            {
                 Ok(_) => {}
                 Err(_) => log::error!("Failed to send IMU"),
             }
         }
 
-        ticker.next().await;
+        match select(receiver.receive(&mut uart_rx), ticker.next()).await {
+            First(Ok(Message::HeartBeat)) => last_heartbeat = Instant::now(),
+            First(Ok(Message::MotorValues(motor_values))) => {
+                log::info!("Motor values: {:?}", &motor_values);
+                current_motor_values = motor_values;
+                SET_MOTOR_STATE.signal(current_motor_values.clone());
+            }
+            First(Ok(Message::CMDVel(_) | Message::StateUpdate(_))) => todo!(),
+            First(Err(_)) => todo!(),
+            Second(_) => {}
+        }
+
+        if (Instant::now() - last_heartbeat).as_secs() > 2 {
+            log::error!("Heartbeat time out!");
+            current_motor_values = Default::default();
+            SET_MOTOR_STATE.signal(Default::default());
+            led.set_high(); // Show error
+        }
     }
 }

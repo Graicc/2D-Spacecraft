@@ -5,13 +5,13 @@ use embassy_stm32::{
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Delay, Duration, Ticker};
-use messages::IMUReading;
+use messages::IMUStatus;
 use mpu6000::MPU6000;
 
 use crate::{IMUResource, state::State};
 
 pub static CURRENT_STATE: Signal<CriticalSectionRawMutex, State> = Signal::new();
-pub static CURRENT_IMU: Signal<CriticalSectionRawMutex, IMUReading> = Signal::new();
+pub static CURRENT_IMU: Signal<CriticalSectionRawMutex, IMUStatus> = Signal::new();
 
 #[embassy_executor::task]
 pub async fn imu_task(res: IMUResource) {
@@ -61,15 +61,15 @@ pub async fn imu_task(res: IMUResource) {
             .read_gyro()
             .unwrap_or_else(|_| panic!("Failed to initialize MPU6000"))
             / gyro_sens;
-        log::info!(
-            "{},{},{},{},{},{}",
-            acc[0],
-            acc[1],
-            acc[2],
-            gyro[0],
-            gyro[1],
-            gyro[2]
-        );
+        // log::info!(
+        //     "{},{},{},{},{},{}",
+        //     acc[0],
+        //     acc[1],
+        //     acc[2],
+        //     gyro[0],
+        //     gyro[1],
+        //     gyro[2]
+        // );
 
         let ax_local = acc[0];
         let ay_local = acc[1];
@@ -87,7 +87,7 @@ pub async fn imu_task(res: IMUResource) {
         state.pt += state.vt * dt_s;
 
         CURRENT_STATE.signal(state.clone());
-        CURRENT_IMU.signal(IMUReading { acc, gyro });
+        CURRENT_IMU.signal(IMUStatus { acc, gyro });
 
         ticker.next().await;
     }

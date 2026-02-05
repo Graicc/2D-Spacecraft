@@ -1,14 +1,15 @@
-use defmt::println;
 use embassy_futures::select;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+};
 use esp_hal::peripherals::{GPIO21, GPIO22, UART0};
 use messages::{Message, Receiver};
 
 pub static CURRENT_CMD_VEL: Signal<CriticalSectionRawMutex, messages::CMDVelValues> = Signal::new();
-pub static CURRENT_IMU_READING: Signal<CriticalSectionRawMutex, messages::IMUReading> =
-    Signal::new();
+pub static CURRENT_STATE: Signal<CriticalSectionRawMutex, messages::StateUpdate> = Signal::new();
 
-pub static MESSAGES_TO_SEND: Signal<CriticalSectionRawMutex, messages::Message> = Signal::new();
+pub static MESSAGES_TO_SEND: Channel<CriticalSectionRawMutex, messages::Message, 16> =
+    Channel::new();
 
 #[embassy_executor::task]
 pub async fn messaging_task(uart: UART0<'static>, rx: GPIO21<'static>, tx: GPIO22<'static>) {
@@ -22,7 +23,7 @@ pub async fn messaging_task(uart: UART0<'static>, rx: GPIO21<'static>, tx: GPIO2
     let mut receiver: Receiver<Message, 256, 32> = messages::Receiver::new();
 
     loop {
-        match select::select(receiver.receive(&mut uart), MESSAGES_TO_SEND.wait()).await {
+        match select::select(receiver.receive(&mut uart), MESSAGES_TO_SEND.receive()).await {
             select::Either::First(Ok(Message::CMDVel(cmd_vel))) => {
                 // println!(
                 //     "Got current vel command: vx={} vy={} vt={}",
@@ -30,11 +31,11 @@ pub async fn messaging_task(uart: UART0<'static>, rx: GPIO21<'static>, tx: GPIO2
                 // );
                 CURRENT_CMD_VEL.signal(cmd_vel);
             }
-            select::Either::First(Ok(Message::IMUReading(imu_reading))) => {
+            select::Either::First(Ok(Message::StateUpdate(state_update))) => {
                 // println!("Got imu reading",);
-                CURRENT_IMU_READING.signal(imu_reading);
+                CURRENT_STATE.signal(state_update);
             }
-            select::Either::First(Ok(Message::MotorValues(_))) => todo!(),
+            select::Either::First(Ok(Message::MotorValues(_) | Message::HeartBeat)) => todo!(), // Should never be received
             select::Either::First(Err(_)) => {}
             select::Either::Second(message) => {
                 messages::send(&mut uart, &message).await.unwrap();

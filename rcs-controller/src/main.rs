@@ -8,16 +8,17 @@
 
 use crate::{
     control::control_task,
-    messaging::{messaging_task, CURRENT_IMU_READING},
+    messaging::{messaging_task, CURRENT_STATE, MESSAGES_TO_SEND},
     wifi::UdpConnection,
 };
 use defmt::{debug, println};
 use embassy_executor::Spawner;
-use embassy_futures::select::select;
+use embassy_futures::select::{select, Either};
 use embassy_net::{udp::UdpSocket, DhcpConfig, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_hal::{assign_resources, clock::CpuClock};
 use esp_radio::wifi::{ClientConfig, ModeConfig};
+use messages::{Message, WifiMessage};
 use {esp_backtrace as _, esp_println as _};
 
 mod control;
@@ -136,38 +137,41 @@ async fn main(spawner: Spawner) {
         let mut udp_connection = UdpConnection::new(socket);
 
         println!("Waiting for first packet to identify host");
-        let data = messages::receive_single_read::<messages::WifiMessage, _>(&mut udp_connection)
+        let _data = messages::receive_single_read::<WifiMessage, _>(&mut udp_connection)
             .await
             .unwrap();
         println!("Got first packet");
 
         loop {
             match select(
-                messages::receive_single_read::<messages::WifiMessage, _>(&mut udp_connection),
-                CURRENT_IMU_READING.wait(),
+                messages::receive_single_read::<WifiMessage, _>(&mut udp_connection),
+                CURRENT_STATE.wait(),
             )
             .await
             {
-                embassy_futures::select::Either::First(Ok(messages::WifiMessage::Ping(num))) => {
+                Either::First(Ok(WifiMessage::Ping(num))) => {
                     debug!("Got ping, sending pong");
-                    messages::send(&mut udp_connection, &messages::WifiMessage::Pong(num))
+                    messages::send(&mut udp_connection, &WifiMessage::Pong(num))
                         .await
                         .unwrap();
                 }
-                embassy_futures::select::Either::First(Ok(
-                    messages::WifiMessage::Pong(_) | messages::WifiMessage::IMUReading(_),
-                )) => {
+                Either::First(Ok(WifiMessage::MotorValues(motor_values))) => {
+                    MESSAGES_TO_SEND
+                        .send(Message::MotorValues(motor_values))
+                        .await;
+                }
+                Either::First(Ok(WifiMessage::HeartBeat)) => {
+                    MESSAGES_TO_SEND.send(Message::HeartBeat).await;
+                }
+                Either::First(Ok(WifiMessage::Pong(_) | WifiMessage::StateUpdate(_))) => {
                     todo!()
                 }
-                embassy_futures::select::Either::First(Err(_)) => {}
-                embassy_futures::select::Either::Second(imu_reading) => {
+                Either::First(Err(_)) => {}
+                Either::Second(state_update) => {
                     debug!("Sending IMU reading");
-                    messages::send(
-                        &mut udp_connection,
-                        &messages::WifiMessage::IMUReading(imu_reading),
-                    )
-                    .await
-                    .unwrap();
+                    messages::send(&mut udp_connection, &WifiMessage::StateUpdate(state_update))
+                        .await
+                        .unwrap();
                 }
             }
         }

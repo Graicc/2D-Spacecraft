@@ -11,39 +11,49 @@ use postcard::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Message {
     CMDVel(CMDVelValues),
-    IMUReading(IMUReading),
+    StateUpdate(StateUpdate),
     MotorValues(MotorValues),
+    HeartBeat,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct CMDVelValues {
     pub vx: f32,
     pub vy: f32,
     pub vt: f32,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct IMUReading {
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct StateUpdate {
+    pub imu_status: IMUStatus,
+    pub motor_values: MotorValues,
+    pub voltage: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct IMUStatus {
     pub acc: [f32; 3],
     pub gyro: [f32; 3],
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default, Clone)]
 pub struct MotorValues {
-    pub left: u32,
-    pub right: u32,
-    pub base: u32,
+    pub left: u8,
+    pub right: u8,
+    pub base: u8,
 }
 
 // TODO: Split into host -> client and client -> host enums
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum WifiMessage {
     Ping(u64),
     Pong(u64),
-    IMUReading(IMUReading),
+    StateUpdate(StateUpdate),
+    MotorValues(MotorValues),
+    HeartBeat,
 }
 
 pub async fn send<T, Tx>(tx: &mut Tx, message: &T) -> Result<(), ()>

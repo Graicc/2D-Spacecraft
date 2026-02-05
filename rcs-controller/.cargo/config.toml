@@ -1,5 +1,5 @@
 [target.xtensa-esp32-none-elf]
-runner = "espflash flash --monitor --chip esp32 --log-format defmt"
+runner = "espflash flash --monitor --chip esp32 --log-format defmt -p COM7"
 
 [alias]
 monitor = "espflash monitor --chip esp32 --log-format defmt --elf target\\xtensa-esp32-none-elf\\release\\rcs-controller"
